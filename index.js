@@ -3,6 +3,7 @@
 const { print } = require('./print');
 const { validateInput } = require('./validate');
 const {
+	emptyMask,
 	maskFromIndexes,
 	maskToIndexes,
 	MASKS,
@@ -54,6 +55,31 @@ function countMissingNumbers(sudoku) {
 	return numbers;
 }
 
+function solveStage2(sudoku, numbers, xMasks, i, grid) {
+	if (i >= numbers.length) return true;
+	let num = numbers[i];
+	let n = num.n;
+
+	let cMasks = xMasks[n - 1];
+	let nextMasks = [];
+	for (let mask of cMasks) {
+		if (isOverlapping(grid, mask)) continue;
+		if (!solveStage2(sudoku, numbers, xMasks, i + 1, union(grid, mask))) continue;
+		nextMasks.push(mask);
+	}
+	if (nextMasks.length <= 0) return false;
+	if (nextMasks.length > 1) {
+		throw new Error('This sudoku grid has multiple solutions.');
+	}
+
+	let mask = nextMasks[0];
+	let indexes = maskToIndexes(mask);
+	for (let inx of indexes) {
+		sudoku[inx] = n;
+	}
+	return true;
+}
+
 /**
  * Solve a sudoku grid.
  *
@@ -69,22 +95,28 @@ function solve(input, printSteps = false) {
 	// TODO: Maybe only re-calculate masks for the missing numbers.
 	let { numberMasks, numberNegativeMasks } = calcNumMasks(sudoku);
 	let emptyRounds = 0;
+	let xMasks = [null, null, null, null, null, null, null, null, null];
 	while (numbers.length > 0) {
 		let num = numbers.shift();
 		let n = num.n;
 		let nMask = numberMasks[n - 1];
 		let nnMask = numberNegativeMasks[n - 1];
+		let cMasks = xMasks[n - 1];
+		if (cMasks == null) cMasks = MASKS;
+
 		let inter = null;
-		// TODO: Remember the list of remaining masks.
-		for (let mask of MASKS) {
+		let nextMasks = [];
+		for (let mask of cMasks) {
 			if (!isSubset(nMask, mask)) continue;
 			if (isOverlapping(nnMask, mask)) continue;
+			nextMasks.push(mask);
 			if (inter == null) inter = mask;
 			else inter = intersect(inter, mask);
 		}
+		xMasks[n - 1] = nextMasks;
 
 		if (inter == null) {
-			throw new Error('This sudoku grid has not solutions.');
+			throw new Error('This sudoku grid has no solutions.');
 		}
 
 		// Get the new fixed indexes.
@@ -97,7 +129,11 @@ function solve(input, printSteps = false) {
 			numbers.push(num);
 			emptyRounds++;
 			if (emptyRounds < numbers.length) continue;
-			throw new Error('This algorithm could not found the complete solution to this sudoku grid.');
+			let hasSolution = solveStage2(sudoku, numbers, xMasks, 0, emptyMask());
+			if (!hasSolution) {
+				throw new Error('This sudoku grid has no solutions.');
+			}
+			return sudoku;
 		}
 		let indexes = maskToIndexes(indexesMask);
 		emptyRounds = 0;
